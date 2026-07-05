@@ -16,6 +16,7 @@ entry point. The upstream `mjlab` repository does not need to be modified.
   - `Mjlab-Velocity-Flat-DR02`
   - `Mjlab-Velocity-Rough-DR02`
 - DR02 PPO/RSL-RL configuration.
+- DR02 FastSAC and TD-MPC2 algorithm defaults for `mjlab-algo`.
 - DR02 reward terms aligned with the `robot_lab` velocity training setup.
 
 ## Requirements
@@ -79,6 +80,33 @@ Run a short smoke test:
 
 ```sh
 uv run train Mjlab-Velocity-Flat-DR02 --agent.max-iterations 10
+```
+
+## FastSAC and TD-MPC2 Training
+
+Install `mjlab-algo` in the same environment to enable the additional algorithm
+entry points. DR02 defaults for these algorithms live in
+`tasks/velocity/dr02/rl_cfg.py` and are registered when this package is imported.
+
+FastSAC:
+
+```sh
+uv run fastsac-train Mjlab-Velocity-Flat-DR02
+uv run fastsac-train Mjlab-Velocity-Rough-DR02
+```
+
+TD-MPC2:
+
+```sh
+uv run tdmpc2-train Mjlab-Velocity-Flat-DR02
+uv run tdmpc2-train Mjlab-Velocity-Rough-DR02
+```
+
+CLI flags are still available for temporary overrides:
+
+```sh
+uv run fastsac-train Mjlab-Velocity-Flat-DR02 --total-steps 10000
+uv run tdmpc2-train Mjlab-Velocity-Flat-DR02 --steps 10000
 ```
 
 ## Play a Checkpoint

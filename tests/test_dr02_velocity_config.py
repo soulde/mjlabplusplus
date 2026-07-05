@@ -6,6 +6,7 @@ from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.sensor import ContactSensorCfg
 from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg
 from mjlab.tasks.velocity.mdp import projected_gravity_from_sensor
+from mjlab_algo.registry import load_fastsac_cfg, load_tdmpc2_cfg
 from mjlabplusplus.robots import DR02_ACTION_SCALE
 from mjlabplusplus.tasks.velocity import rewards as plus_rewards
 
@@ -177,3 +178,27 @@ def test_dr02_ppo_runner_configs_match_robot_lab_iteration_counts() -> None:
     assert flat_rl_cfg.experiment_name == "deeprobotics_dr02_standard_flat"
     assert rough_rl_cfg.max_iterations == 3_000
     assert rough_rl_cfg.experiment_name == "deeprobotics_dr02_standard_rough"
+
+
+def test_dr02_fastsac_and_tdmpc2_configs_are_registered_by_task() -> None:
+    """DR02 off-policy algorithm defaults should live with the task cfg."""
+    flat_fastsac = load_fastsac_cfg(DR02_FLAT_TASK)
+    rough_fastsac = load_fastsac_cfg(DR02_ROUGH_TASK)
+    flat_tdmpc2 = load_tdmpc2_cfg(DR02_FLAT_TASK)
+    rough_tdmpc2 = load_tdmpc2_cfg(DR02_ROUGH_TASK)
+
+    assert flat_fastsac.task == DR02_FLAT_TASK
+    assert flat_fastsac.exp_name == "deeprobotics_dr02_standard_flat"
+    assert flat_fastsac.num_envs == 16
+    assert flat_fastsac.total_steps == 2_000_000
+    assert flat_fastsac.learning_starts == 10_000
+    assert rough_fastsac.task == DR02_ROUGH_TASK
+    assert rough_fastsac.exp_name == "deeprobotics_dr02_standard_rough"
+
+    assert flat_tdmpc2.task == DR02_FLAT_TASK
+    assert flat_tdmpc2.exp_name == "deeprobotics_dr02_standard_flat"
+    assert flat_tdmpc2.steps == 1_000_000
+    assert flat_tdmpc2.model_size == 5
+    assert flat_tdmpc2.batch_size == 256
+    assert rough_tdmpc2.task == DR02_ROUGH_TASK
+    assert rough_tdmpc2.exp_name == "deeprobotics_dr02_standard_rough"
