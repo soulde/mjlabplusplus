@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mjlabplusplus"
+version = "0.1.0"
+description = "Private MJLab extension package for additional robots and tasks."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.entry-points."mjlab.tasks"]
+mjlabplusplus = "mjlabplusplus"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+mjlabplusplus = [
+  "assets/robots/dr02/urdf/*.urdf",
+  "assets/robots/dr02/mjcf/*.xml",
+  "assets/robots/dr02/assets/*.STL",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.format]
+indent-style = "space"
+
+[dependency-groups]
+dev = [
+  "pytest>=9.0.0",
+  "ruff>=0.14.0",
+  "ty>=0.0.1a20",
+]
