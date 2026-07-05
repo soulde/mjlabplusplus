@@ -1,8 +1,12 @@
 """DR02 velocity task configuration tests."""
 
+from types import SimpleNamespace
+
 import mjlabplusplus  # noqa: F401
+import torch
 
 from mjlab.envs.mdp.actions import JointPositionActionCfg
+from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.sensor import ContactSensorCfg
 from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg
 from mjlab.tasks.velocity.mdp import projected_gravity_from_sensor
@@ -202,3 +206,39 @@ def test_dr02_fastsac_and_tdmpc2_configs_are_registered_by_task() -> None:
     assert flat_tdmpc2.batch_size == 256
     assert rough_tdmpc2.task == DR02_ROUGH_TASK
     assert rough_tdmpc2.exp_name == "deeprobotics_dr02_standard_rough"
+
+
+def test_feet_height_body_handles_multiple_feet_per_env() -> None:
+    """Body-frame foot-height reward should expand root quat across feet."""
+
+    class _CommandManager:
+        def get_command(self, _name: str) -> torch.Tensor:
+            return torch.tensor([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+
+    asset = SimpleNamespace(
+        data=SimpleNamespace(
+            body_link_pos_w=torch.tensor(
+                [
+                    [[0.0, 0.0, -0.2], [0.0, 0.0, -0.1]],
+                    [[0.0, 0.0, -0.3], [0.0, 0.0, -0.2]],
+                ]
+            ),
+            body_link_lin_vel_w=torch.ones(2, 2, 3),
+            root_link_pos_w=torch.zeros(2, 3),
+            root_link_lin_vel_w=torch.zeros(2, 3),
+            root_link_quat_w=torch.tensor([[1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]]),
+            projected_gravity_b=torch.tensor([[0.0, 0.0, -1.0], [0.0, 0.0, -1.0]]),
+        )
+    )
+    env = SimpleNamespace(scene={"robot": asset}, command_manager=_CommandManager())
+
+    reward = plus_rewards.feet_height_body(
+        env,
+        command_name="twist",
+        asset_cfg=SceneEntityCfg("robot", body_ids=(0, 1)),
+        target_height=-0.2,
+        tanh_mult=2.0,
+    )
+
+    assert reward.shape == (2,)
+    assert torch.all(torch.isfinite(reward))

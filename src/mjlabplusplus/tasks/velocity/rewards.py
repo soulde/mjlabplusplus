@@ -155,8 +155,9 @@ def feet_height_body(
     foot_vel = asset.data.body_link_lin_vel_w[:, asset_cfg.body_ids, :]
     rel_pos = foot_pos - asset.data.root_link_pos_w[:, None, :]
     rel_vel = foot_vel - asset.data.root_link_lin_vel_w[:, None, :]
-    foot_pos_b = quat_apply_inverse(asset.data.root_link_quat_w[:, None, :], rel_pos)
-    foot_vel_b = quat_apply_inverse(asset.data.root_link_quat_w[:, None, :], rel_vel)
+    root_quat_w = asset.data.root_link_quat_w[:, None, :].expand(*rel_pos.shape[:-1], 4)
+    foot_pos_b = quat_apply_inverse(root_quat_w, rel_pos)
+    foot_vel_b = quat_apply_inverse(root_quat_w, rel_vel)
 
     height_error = torch.square(foot_pos_b[:, :, 2] - target_height)
     velocity_scale = torch.tanh(
