@@ -1,6 +1,7 @@
 """DR02 velocity task configuration tests."""
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 import mjlabplusplus  # noqa: F401
 import torch
@@ -231,12 +232,15 @@ def test_feet_height_body_handles_multiple_feet_per_env() -> None:
             projected_gravity_b=torch.tensor([[0.0, 0.0, -1.0], [0.0, 0.0, -1.0]]),
         )
     )
-    env = SimpleNamespace(scene={"robot": asset}, command_manager=_CommandManager())
+    env = cast(
+        Any,
+        SimpleNamespace(scene={"robot": asset}, command_manager=_CommandManager()),
+    )
 
     reward = plus_rewards.feet_height_body(
         env,
         command_name="twist",
-        asset_cfg=SceneEntityCfg("robot", body_ids=(0, 1)),
+        asset_cfg=SceneEntityCfg("robot", body_ids=[0, 1]),
         target_height=-0.2,
         tanh_mult=2.0,
     )

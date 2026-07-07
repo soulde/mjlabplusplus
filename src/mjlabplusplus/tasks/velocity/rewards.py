@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import torch
 
 from mjlab.entity import Entity
+from mjlab.managers import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.sensor import ContactSensor
 from mjlab.utils.lab_api.math import quat_apply_inverse
@@ -92,6 +93,39 @@ def joint_pos_penalty(
     return reward * _upright_scale(env)
 
 
+def joint_mirror(
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg,
+    mirror_joints: list[list[str]],
+) -> torch.Tensor:
+    """Penalize mirrored joint pairs that deviate from each other."""
+    asset: Entity = env.scene[asset_cfg.name]
+    cache_name = "_mjlabplusplus_joint_mirror_cache"
+    if not hasattr(env, cache_name):
+        setattr(
+            env,
+            cache_name,
+            [
+                [asset.find_joints(joint_name) for joint_name in joint_pair]
+                for joint_pair in mirror_joints
+            ],
+        )
+    reward = torch.zeros(env.num_envs, device=env.device)
+    joint_pair_cache = getattr(env, cache_name)
+    for joint_pair in joint_pair_cache:
+        diff = torch.sum(
+            torch.square(
+                asset.data.joint_pos[:, joint_pair[0][0]]
+                - asset.data.joint_pos[:, joint_pair[1][0]]
+            ),
+            dim=-1,
+        )
+        reward += diff
+    if mirror_joints:
+        reward *= 1 / len(mirror_joints)
+    return reward * _upright_scale(env)
+
+
 def contact_forces(
     env: ManagerBasedRlEnv,
     sensor_name: str,
@@ -137,6 +171,118 @@ def feet_contact_without_cmd(
     reward = torch.sum(first_contact.float(), dim=1)
     reward *= (torch.linalg.norm(command, dim=1) < 0.1).float()
     return reward * _upright_scale(env)
+
+
+class feet_gait:
+    """Quadruped gait timing reward matching robot_lab's GaitReward."""
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv):
+        self.std: float = cfg.params["std"]
+        self.command_name: str = cfg.params["command_name"]
+        self.max_err: float = cfg.params["max_err"]
+        self.velocity_threshold: float = cfg.params["velocity_threshold"]
+        self.command_threshold: float = cfg.params["command_threshold"]
+        self.contact_sensor: ContactSensor = env.scene[cfg.params["sensor_name"]]
+        synced_feet_pair_names = cfg.params["synced_feet_pair_names"]
+        if (
+            len(synced_feet_pair_names) != 2
+            or len(synced_feet_pair_names[0]) != 2
+            or len(synced_feet_pair_names[1]) != 2
+        ):
+            raise ValueError("feet_gait only supports two synchronized foot pairs.")
+        self.synced_feet_pairs = [
+            self._resolve_pair(synced_feet_pair_names[0]),
+            self._resolve_pair(synced_feet_pair_names[1]),
+        ]
+
+    def __call__(
+        self,
+        env: ManagerBasedRlEnv,
+        std: float,
+        command_name: str,
+        max_err: float,
+        velocity_threshold: float,
+        command_threshold: float,
+        synced_feet_pair_names: tuple[tuple[str, str], tuple[str, str]],
+        sensor_name: str,
+    ) -> torch.Tensor:
+        del std
+        del command_name
+        del max_err
+        del velocity_threshold
+        del command_threshold
+        del synced_feet_pair_names
+        del sensor_name
+        sync_reward_0 = self._sync_reward_func(
+            self.synced_feet_pairs[0][0], self.synced_feet_pairs[0][1]
+        )
+        sync_reward_1 = self._sync_reward_func(
+            self.synced_feet_pairs[1][0], self.synced_feet_pairs[1][1]
+        )
+        sync_reward = sync_reward_0 * sync_reward_1
+        async_reward_0 = self._async_reward_func(
+            self.synced_feet_pairs[0][0], self.synced_feet_pairs[1][0]
+        )
+        async_reward_1 = self._async_reward_func(
+            self.synced_feet_pairs[0][1], self.synced_feet_pairs[1][1]
+        )
+        async_reward_2 = self._async_reward_func(
+            self.synced_feet_pairs[0][0], self.synced_feet_pairs[1][1]
+        )
+        async_reward_3 = self._async_reward_func(
+            self.synced_feet_pairs[1][0], self.synced_feet_pairs[0][1]
+        )
+        async_reward = async_reward_0 * async_reward_1 * async_reward_2
+        async_reward *= async_reward_3
+
+        command = env.command_manager.get_command(self.command_name)
+        assert command is not None
+        asset: Entity = env.scene["robot"]
+        cmd = torch.linalg.norm(command, dim=1)
+        body_vel = torch.linalg.norm(asset.data.root_com_lin_vel_b[:, :2], dim=1)
+        reward = torch.where(
+            torch.logical_or(
+                cmd > self.command_threshold,
+                body_vel > self.velocity_threshold,
+            ),
+            sync_reward * async_reward,
+            0.0,
+        )
+        return reward * _upright_scale(env)
+
+    def _resolve_pair(self, pair: tuple[str, str]) -> tuple[int, int]:
+        primary_names = self.contact_sensor.primary_names
+        return primary_names.index(pair[0]), primary_names.index(pair[1])
+
+    def _sync_reward_func(self, foot_0: int, foot_1: int) -> torch.Tensor:
+        air_time = self.contact_sensor.data.current_air_time
+        contact_time = self.contact_sensor.data.current_contact_time
+        assert air_time is not None
+        assert contact_time is not None
+        se_air = torch.clip(
+            torch.square(air_time[:, foot_0] - air_time[:, foot_1]),
+            max=self.max_err**2,
+        )
+        se_contact = torch.clip(
+            torch.square(contact_time[:, foot_0] - contact_time[:, foot_1]),
+            max=self.max_err**2,
+        )
+        return torch.exp(-(se_air + se_contact) / self.std)
+
+    def _async_reward_func(self, foot_0: int, foot_1: int) -> torch.Tensor:
+        air_time = self.contact_sensor.data.current_air_time
+        contact_time = self.contact_sensor.data.current_contact_time
+        assert air_time is not None
+        assert contact_time is not None
+        se_act_0 = torch.clip(
+            torch.square(air_time[:, foot_0] - contact_time[:, foot_1]),
+            max=self.max_err**2,
+        )
+        se_act_1 = torch.clip(
+            torch.square(contact_time[:, foot_0] - air_time[:, foot_1]),
+            max=self.max_err**2,
+        )
+        return torch.exp(-(se_act_0 + se_act_1) / self.std)
 
 
 def feet_height_body(
