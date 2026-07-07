@@ -111,7 +111,6 @@ def dr02_rough_tdmpc2_runner_cfg() -> TDMPC2Config:
         buffer_size=1_000_000,
         lr=3.0e-4,
         mpc=True,
-        compile=True,
         enable_wandb=True,
         save_video=False,
         episodic=False,

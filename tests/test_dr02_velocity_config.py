@@ -204,7 +204,7 @@ def test_dr02_fastsac_and_tdmpc2_configs_are_registered_by_task() -> None:
     assert flat_tdmpc2.steps == 1_000_000
     assert flat_tdmpc2.model_size == 5
     assert flat_tdmpc2.batch_size == 256
-    assert flat_tdmpc2.compile
+    assert not hasattr(flat_tdmpc2, "compile")
     assert rough_tdmpc2.task == DR02_ROUGH_TASK
     assert rough_tdmpc2.exp_name == "deeprobotics_dr02_standard_rough"
 
